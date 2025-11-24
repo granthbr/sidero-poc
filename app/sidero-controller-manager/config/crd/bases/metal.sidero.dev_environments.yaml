@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.2
+    controller-gen.kubebuilder.io/version: v0.19.0
   name: environments.metal.sidero.dev
 spec:
   group: metal.sidero.dev
@@ -101,13 +101,19 @@ spec:
     subresources:
       status: {}
   - additionalPrinterColumns:
-    - description: the kernel for the environment
+    - description: the boot asset URL (Talos 1.10+)
+      jsonPath: .spec.bootAsset.url
+      name: BootAsset
+      type: string
+    - description: the kernel for the environment (legacy)
       jsonPath: .spec.kernel.url
       name: Kernel
+      priority: 1
       type: string
-    - description: the initrd for the environment
+    - description: the initrd for the environment (legacy)
       jsonPath: .spec.initrd.url
       name: Initrd
+      priority: 1
       type: string
     - description: indicates the readiness of the environment
       jsonPath: .status.conditions[?(@.type=="Ready")].status
@@ -142,7 +148,118 @@ spec:
           spec:
             description: EnvironmentSpec defines the desired state of Environment.
             properties:
+              airGap:
+                description: |-
+                  AirGap configuration for offline/disconnected deployments.
+                  Supports Talos 1.9+ air-gap features (registry mirrors, image cache, local Image Factory).
+                properties:
+                  assetMirror:
+                    description: |-
+                      AssetMirror is a local HTTP(S) server hosting Talos release assets.
+                      Replaces downloads from github.com/siderolabs/talos/releases.
+                      Example: https://artifacts.local/talos
+                    type: string
+                  enabled:
+                    description: |-
+                      Enabled indicates if this environment is configured for air-gapped operation.
+                      When true, all assets are fetched from local sources.
+                    type: boolean
+                  imageCacheURL:
+                    description: |-
+                      ImageCacheURL points to a pre-built OCI image cache file.
+                      Talos 1.9+ supports embedding container images in boot assets.
+                      Example: https://artifacts.local/talos/v1.11.5/image-cache.oci
+                    type: string
+                  localImageFactory:
+                    description: |-
+                      LocalImageFactory configures a local Image Factory instance.
+                      Used for generating custom boot assets with extensions in air-gap.
+                    properties:
+                      endpoint:
+                        description: |-
+                          Endpoint is the local Image Factory API endpoint.
+                          Example: https://factory.local
+                        type: string
+                      insecureSkipVerify:
+                        description: InsecureSkipVerify skips TLS certificate verification
+                          for Factory API.
+                        type: boolean
+                      registry:
+                        description: |-
+                          Registry is the local container registry used by Image Factory.
+                          Example: registry.local:5000
+                        type: string
+                    required:
+                    - endpoint
+                    - registry
+                    type: object
+                  registryMirrors:
+                    additionalProperties:
+                      description: |-
+                        RegistryMirror defines a container registry mirror configuration for air-gapped environments.
+                        Introduced in Talos 1.9+ for offline deployments.
+                      properties:
+                        endpoints:
+                          description: |-
+                            Endpoints is a list of registry mirror URLs.
+                            Example: ["https://registry.local:5000"]
+                          items:
+                            type: string
+                          type: array
+                        overridePath:
+                          description: OverridePath replaces the image path when pulling
+                            from mirror.
+                          type: boolean
+                        skipVerify:
+                          description: |-
+                            SkipVerify skips TLS certificate verification.
+                            Use with caution - only for development/testing.
+                          type: boolean
+                      required:
+                      - endpoints
+                      type: object
+                    description: |-
+                      RegistryMirrors defines container registry mirror configuration.
+                      Injected into Talos machine config via metadata service.
+                      Map key is the upstream registry (e.g., "docker.io", "ghcr.io").
+                    type: object
+                type: object
+              bootAsset:
+                description: |-
+                  BootAsset is the preferred method for Talos 1.10+ with systemd-boot.
+                  When specified, Kernel and Initrd fields are ignored.
+                properties:
+                  extensions:
+                    description: |-
+                      Extensions is a list of system extensions baked into this boot asset.
+                      These are informational only - extensions are baked into the image.
+                    items:
+                      type: string
+                    type: array
+                  kernelArgs:
+                    description: |-
+                      KernelArgs are kernel arguments embedded in the boot asset.
+                      These are informational only - the actual args are baked into the UKI.
+                    items:
+                      type: string
+                    type: array
+                  schematicID:
+                    description: SchematicID is the Image Factory schematic ID (if
+                      using Image Factory).
+                    type: string
+                  sha512:
+                    description: SHA512 checksum of the boot asset.
+                    type: string
+                  url:
+                    description: |-
+                      URL is the boot asset URL from Image Factory or custom UKI.
+                      Example: https://factory.talos.dev/image/<schematic-id>/<version>/metal-amd64.raw.xz
+                    type: string
+                type: object
               initrd:
+                description: |-
+                  Initrd configuration for legacy boot (Talos < 1.10 or non-UEFI systems).
+                  Deprecated in favor of BootAsset for Talos 1.10+.
                 properties:
                   sha512:
                     type: string
@@ -150,8 +267,14 @@ spec:
                     type: string
                 type: object
               kernel:
+                description: |-
+                  Kernel configuration for legacy boot (Talos < 1.10 or non-UEFI systems).
+                  Deprecated in favor of BootAsset for Talos 1.10+.
                 properties:
                   args:
+                    description: |-
+                      Args are kernel arguments. DEPRECATED in Talos 1.10+ with systemd-boot.
+                      Use BootAsset with embedded args instead.
                     items:
                       type: string
                     type: array
