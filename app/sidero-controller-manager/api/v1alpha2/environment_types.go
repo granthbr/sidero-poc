@@ -59,6 +59,74 @@ type BootAsset struct {
 	Extensions []string `json:"extensions,omitempty"`
 }
 
+// RegistryMirror defines a container registry mirror configuration for air-gapped environments.
+// Introduced in Talos 1.9+ for offline deployments.
+type RegistryMirror struct {
+	// Endpoints is a list of registry mirror URLs.
+	// Example: ["https://registry.local:5000"]
+	// +required
+	Endpoints []string `json:"endpoints"`
+
+	// SkipVerify skips TLS certificate verification.
+	// Use with caution - only for development/testing.
+	// +optional
+	SkipVerify bool `json:"skipVerify,omitempty"`
+
+	// OverridePath replaces the image path when pulling from mirror.
+	// +optional
+	OverridePath bool `json:"overridePath,omitempty"`
+}
+
+// LocalImageFactory defines configuration for a local/on-premise Image Factory instance.
+// Used in air-gapped environments where factory.talos.dev is not accessible.
+type LocalImageFactory struct {
+	// Endpoint is the local Image Factory API endpoint.
+	// Example: https://factory.local
+	// +required
+	Endpoint string `json:"endpoint"`
+
+	// Registry is the local container registry used by Image Factory.
+	// Example: registry.local:5000
+	// +required
+	Registry string `json:"registry"`
+
+	// InsecureSkipVerify skips TLS certificate verification for Factory API.
+	// +optional
+	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
+}
+
+// AirGapConfig defines configuration for air-gapped/offline deployments.
+// Introduced to support Talos 1.9+ air-gap features.
+type AirGapConfig struct {
+	// Enabled indicates if this environment is configured for air-gapped operation.
+	// When true, all assets are fetched from local sources.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// AssetMirror is a local HTTP(S) server hosting Talos release assets.
+	// Replaces downloads from github.com/siderolabs/talos/releases.
+	// Example: https://artifacts.local/talos
+	// +optional
+	AssetMirror string `json:"assetMirror,omitempty"`
+
+	// RegistryMirrors defines container registry mirror configuration.
+	// Injected into Talos machine config via metadata service.
+	// Map key is the upstream registry (e.g., "docker.io", "ghcr.io").
+	// +optional
+	RegistryMirrors map[string]RegistryMirror `json:"registryMirrors,omitempty"`
+
+	// ImageCacheURL points to a pre-built OCI image cache file.
+	// Talos 1.9+ supports embedding container images in boot assets.
+	// Example: https://artifacts.local/talos/v1.11.5/image-cache.oci
+	// +optional
+	ImageCacheURL string `json:"imageCacheURL,omitempty"`
+
+	// LocalImageFactory configures a local Image Factory instance.
+	// Used for generating custom boot assets with extensions in air-gap.
+	// +optional
+	LocalImageFactory *LocalImageFactory `json:"localImageFactory,omitempty"`
+}
+
 // EnvironmentSpec defines the desired state of Environment.
 type EnvironmentSpec struct {
 	// BootAsset is the preferred method for Talos 1.10+ with systemd-boot.
@@ -75,6 +143,11 @@ type EnvironmentSpec struct {
 	// Deprecated in favor of BootAsset for Talos 1.10+.
 	// +optional
 	Initrd Initrd `json:"initrd,omitempty"`
+
+	// AirGap configuration for offline/disconnected deployments.
+	// Supports Talos 1.9+ air-gap features (registry mirrors, image cache, local Image Factory).
+	// +optional
+	AirGap *AirGapConfig `json:"airGap,omitempty"`
 }
 
 type AssetCondition struct {
