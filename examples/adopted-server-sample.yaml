@@ -1,0 +1,186 @@
+# Example AdoptedServer resource for adopting an existing Talos node
+#
+# This example shows how to adopt a single-node cluster (control plane + worker)
+# located in Spokane with Management API integration and SideroLink monitoring.
+#
+# Usage:
+#   kubectl apply -f examples/adopted-server-sample.yaml
+#
+# Check status:
+#   kubectl get adoptedservers
+#   kubectl describe adoptedserver spokane-node-1
+
+apiVersion: metal.sidero.dev/v1alpha2
+kind: AdoptedServer
+metadata:
+  name: spokane-node-1
+  namespace: default
+  labels:
+    location: spokane
+    environment: production
+    cluster: production-spokane
+  annotations:
+    description: "Single-node Talos cluster in Spokane office"
+    owner: "infrastructure-team"
+
+spec:
+  # Talos configuration - defines how to connect to the node
+  talos:
+    # Talos API endpoint - must be reachable from Sidero controller
+    endpoint: "192.168.1.10:50000"
+
+    # Node type: "controlplane" or "worker"
+    # For single-node clusters, use "controlplane"
+    nodeType: controlplane
+
+    # Optional: Talos version running on the node
+    talosVersion: "v1.8.3"
+
+    # Optional: Kubernetes version running on the node
+    kubernetesVersion: "v1.31.1"
+
+    # Optional: Node hostname
+    hostname: spokane-node-1
+
+  # Management API integration - enables bidirectional sync
+  managementAPI:
+    # Enable Management API integration
+    enabled: true
+
+    # Management API endpoint (must be reachable from Sidero controller)
+    endpoint: "http://talos-management-api:8090"
+
+    # Cluster name in the Management API
+    clusterName: "production-spokane"
+
+    # Optional: Cluster UUID if already registered in Management API
+    # clusterID: "550e8400-e29b-41d4-a716-446655440000"
+
+    # Optional: Secret reference for Management API authentication
+    # secretRef:
+    #   namespace: default
+    #   name: management-api-credentials
+
+  # SideroLink configuration - enables monitoring and log streaming
+  sideroLink:
+    enabled: true
+
+    # Optional: Pre-assigned IPv6 address (usually auto-generated)
+    # address: "fdae:41e4:649b:9303::1/64"
+
+    # Optional: Wireguard public key (usually auto-generated)
+    # publicKey: "..."
+
+  # Accept the server for management
+  # Set to true to enable Sidero management
+  accepted: true
+
+  # Optional: Custom labels for filtering and organization
+  labels:
+    location: spokane
+    datacenter: spokane-dc1
+    purpose: edge-computing
+
+  # Optional: Custom annotations
+  annotations:
+    monitoring: "enabled"
+    backup-schedule: "daily"
+
+---
+
+# Example: Worker Node in the Same Cluster
+
+apiVersion: metal.sidero.dev/v1alpha2
+kind: AdoptedServer
+metadata:
+  name: spokane-worker-1
+  namespace: default
+  labels:
+    location: spokane
+    environment: production
+    cluster: production-spokane
+
+spec:
+  talos:
+    endpoint: "192.168.1.20:50000"
+    nodeType: worker
+    talosVersion: "v1.8.3"
+    kubernetesVersion: "v1.31.1"
+    hostname: spokane-worker-1
+
+  managementAPI:
+    enabled: true
+    endpoint: "http://talos-management-api:8090"
+    clusterName: "production-spokane"
+
+  sideroLink:
+    enabled: true
+
+  accepted: true
+
+---
+
+# Example: Minimal Configuration (Bare Minimum)
+
+apiVersion: metal.sidero.dev/v1alpha2
+kind: AdoptedServer
+metadata:
+  name: minimal-example
+  namespace: default
+
+spec:
+  talos:
+    endpoint: "192.168.1.30:50000"
+    nodeType: worker
+  accepted: true
+
+---
+
+# Example: Without Management API Integration
+
+apiVersion: metal.sidero.dev/v1alpha2
+kind: AdoptedServer
+metadata:
+  name: standalone-monitoring
+  namespace: default
+
+spec:
+  talos:
+    endpoint: "192.168.1.40:50000"
+    nodeType: controlplane
+
+  # SideroLink only - no Management API integration
+  sideroLink:
+    enabled: true
+
+  accepted: true
+
+---
+
+# Example: Multiple Locations
+
+apiVersion: metal.sidero.dev/v1alpha2
+kind: AdoptedServer
+metadata:
+  name: seattle-node-1
+  namespace: default
+  labels:
+    location: seattle
+
+spec:
+  talos:
+    endpoint: "10.20.30.10:50000"
+    nodeType: controlplane
+
+  managementAPI:
+    enabled: true
+    endpoint: "http://talos-management-api:8090"
+    clusterName: "production-seattle"
+
+  sideroLink:
+    enabled: true
+
+  accepted: true
+  labels:
+    location: seattle
+    region: west-coast

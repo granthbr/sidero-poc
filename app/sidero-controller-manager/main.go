@@ -265,6 +265,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&controllers.AdoptedServerReconciler{
+		Client:    mgr.GetClient(),
+		Log:       ctrl.Log.WithName("controllers").WithName("AdoptedServer"),
+		Scheme:    mgr.GetScheme(),
+		APIReader: mgr.GetAPIReader(),
+		Recorder:  recorder,
+	}).SetupWithManager(mgr, controller.Options{MaxConcurrentReconciles: defaultMaxConcurrentReconciles}); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "AdoptedServer")
+		os.Exit(1)
+	}
+
 	setupWebhooks(mgr)
 	setupChecks(mgr, httpPort)
 
