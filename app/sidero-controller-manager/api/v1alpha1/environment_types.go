@@ -75,8 +75,10 @@ type EnvironmentList struct {
 
 // EnvironmentDefaultSpec returns EnvironmentDefault's spec.
 func EnvironmentDefaultSpec(talosRelease, apiEndpoint string, apiPort uint16) *EnvironmentSpec {
-	args := make([]string, 0, len(kernel.DefaultArgs)+6)
-	args = append(args, kernel.DefaultArgs...)
+	// Get default kernel args (kernel.DefaultArgs is a function in Talos 1.11+)
+	defaultArgs := kernel.DefaultArgs(nil)
+	args := make([]string, 0, len(defaultArgs)+6)
+	args = append(args, defaultArgs...)
 	args = append(args, "console=tty0", "console=ttyS0", "earlyprintk=ttyS0")
 	args = append(args, "initrd=initramfs.xz", "talos.platform=metal")
 	sort.Strings(args)

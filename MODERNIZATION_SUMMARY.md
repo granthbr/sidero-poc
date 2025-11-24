@@ -622,6 +622,116 @@ if env.Spec.Initrd.URL != "" { ... }
 
 ---
 
+### Phase 2: Core Server Updates (100% Complete)
+
+#### 2.1 iPXE Server Modernization
+
+**Files Modified**:
+- `app/sidero-controller-manager/internal/ipxe/ipxe_server.go:98-119, 224-252`
+- `app/sidero-controller-manager/pkg/constants/constants.go:14-16`
+
+**Changes**:
+
+1. **Updated iPXE Template** (lines 98-119):
+   - Added boot asset support for Talos 1.10+ UKI/systemd-boot
+   - Uses `sanboot` command for disk image boot
+   - Automatic fallback to legacy kernel/initrd boot
+   - Enhanced error messages and debugging output
+
+2. **Updated ipxeHandler** (lines 224-252):
+   - Detects when Environment has BootAsset configured
+   - Sets `UseBootAsset` flag dynamically
+   - Passes boot asset filename to template
+   - Logs boot method selection (boot asset vs legacy)
+
+3. **Added Boot Asset Constant** (constants.go:16):
+   ```go
+   BootAsset = "boot.raw.xz"
+   ```
+
+**Boot Flow**:
+```
+Environment with BootAsset → iPXE downloads boot.raw.xz → sanboot boots disk image
+Environment without BootAsset → iPXE downloads vmlinuz + initramfs.xz → kernel boot
+```
+
+**Status**: ✅ Complete, supports both Talos 1.10+ UKI and legacy boot
+
+---
+
+#### 2.2 Metadata Server Air-Gap Support
+
+**File Modified**: `app/sidero-controller-manager/internal/metadata/metadata_server.go:230-239, 419-526`
+
+**Changes**:
+
+1. **Added Registry Mirror Injection** (lines 230-239):
+   - Integrated into metadata config pipeline
+   - Called after node labeling, before returning config
+   - Non-blocking - continues if no air-gap config
+
+2. **New Function: injectRegistryMirrors** (lines 419-526):
+   - Looks up Environment (Server → ServerClass → Default)
+   - Checks for AirGap config with registry mirrors
+   - Builds Talos machine config patch
+   - Applies strategic merge patch to inject mirrors
+
+**Registry Mirror Format**:
+```yaml
+machine:
+  registries:
+    mirrors:
+      docker.io:
+        endpoints:
+          - https://registry.local:5000/docker.io
+        skipVerify: false
+        overridePath: false
+```
+
+**Logic Flow**:
+```
+1. Get Environment for server
+2. Check if env.Spec.AirGap.Enabled && len(RegistryMirrors) > 0
+3. Build registry mirrors patch
+4. Apply patch to machine config
+5. Return patched config
+```
+
+**Status**: ✅ Complete, fully integrated with air-gap CRD
+
+---
+
+#### 2.3 Talos 1.11 API Compatibility Fixes
+
+**Files Modified**:
+- `app/sidero-controller-manager/api/v1alpha2/environment_types.go:196-199`
+- `app/sidero-controller-manager/api/v1alpha1/environment_types.go:78-81`
+- `app/sidero-controller-manager/internal/ipxe/ipxe_server.go:433-435`
+
+**Breaking Change**: `kernel.DefaultArgs` changed from slice to function
+
+**Old API (Talos 1.8)**:
+```go
+var DefaultArgs []string
+args := append([]string(nil), kernel.DefaultArgs...)
+```
+
+**New API (Talos 1.11)**:
+```go
+func DefaultArgs(quirks quirks.Quirks) []string
+defaultArgs := kernel.DefaultArgs(nil)
+args := append([]string(nil), defaultArgs...)
+```
+
+**Files Fixed**:
+- v1alpha2 API: `EnvironmentDefaultSpec()` function
+- v1alpha1 API: `EnvironmentDefaultSpec()` function
+- iPXE server: `newAgentEnvironment()` function
+
+**Status**: ✅ Complete, all compilation errors resolved
+
+---
+
 ## 🚀 NEXT STEPS
 
 ### Immediate (1-2 days)
@@ -632,8 +742,8 @@ if env.Spec.Initrd.URL != "" { ... }
 5. ⏳ **Test build**: `make sidero-controller-manager`
 
 ### Short-term (1 week)
-6. ⏳ **Update iPXE server** for boot asset support
-7. ⏳ **Update metadata server** for Talos 1.11 compatibility
+6. ✅ **Update iPXE server** for boot asset support
+7. ✅ **Update metadata server** for Talos 1.11 compatibility
 8. ⏳ **Manual testing**: PXE boot with BIOS and UEFI
 
 ### Medium-term (2-3 weeks)

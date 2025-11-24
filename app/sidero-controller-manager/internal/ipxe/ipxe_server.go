@@ -96,7 +96,23 @@ set x:int32 0
 `))
 
 // ipxeTemplate is returned as response to `chain` request from the bootFile/bootTemplate to boot actual OS (or Sidero agent).
+// Updated to support both BootAsset (Talos 1.10+ with UKI/systemd-boot) and legacy kernel/initrd boot.
 var ipxeTemplate = template.Must(template.New("iPXE config").Parse(`#!ipxe
+{{- if .UseBootAsset }}
+{{/* Talos 1.10+ Boot Asset (metal-amd64.raw.xz or custom UKI) */}}
+{{/* Boot asset is a disk image, use sanboot to boot it */}}
+echo Downloading boot asset from /env/{{ .Env.Name }}/{{ .BootAsset }}
+imgfetch /env/{{ .Env.Name }}/{{ .BootAsset }} || goto failed
+echo Booting from boot asset...
+sanboot --no-describe --drive 0x00 || goto failed
+goto failed
+
+:failed
+echo
+echo Failed to boot from boot asset
+echo Falling back to legacy boot...
+{{- end }}
+{{/* Legacy kernel/initrd boot (BIOS or fallback) */}}
 kernel /env/{{ .Env.Name }}/{{ .KernelAsset }} {{range $arg := .Env.Spec.Kernel.Args}} {{$arg}}{{end}}
 initrd /env/{{ .Env.Name }}/{{ .InitrdAsset }}
 boot
@@ -211,14 +227,28 @@ func ipxeHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Using %q environment", env.Name)
 	}
 
+	// Determine if we should use boot asset (Talos 1.10+ with UKI/systemd-boot)
+	// or fall back to legacy kernel/initrd boot
+	useBootAsset := env.Spec.BootAsset != nil && env.Spec.BootAsset.URL != ""
+
+	if useBootAsset {
+		log.Printf("Environment %q configured for boot asset (Talos 1.10+ UKI)", env.Name)
+	} else {
+		log.Printf("Environment %q using legacy kernel/initrd boot", env.Name)
+	}
+
 	args := struct {
-		Env         *metalv1.Environment
-		KernelAsset string
-		InitrdAsset string
+		Env          *metalv1.Environment
+		UseBootAsset bool
+		BootAsset    string
+		KernelAsset  string
+		InitrdAsset  string
 	}{
-		Env:         env,
-		KernelAsset: constants.KernelAsset,
-		InitrdAsset: constants.InitrdAsset,
+		Env:          env,
+		UseBootAsset: useBootAsset,
+		BootAsset:    constants.BootAsset,
+		KernelAsset:  constants.KernelAsset,
+		InitrdAsset:  constants.InitrdAsset,
 	}
 
 	var buf bytes.Buffer
@@ -400,7 +430,9 @@ func newEnvironment(ctx context.Context, server *metalv1.Server, serverBinding *
 }
 
 func newAgentEnvironment(arch, mac string) *metalv1.Environment {
-	args := append([]string(nil), kernel.DefaultArgs...)
+	// Get default kernel args (kernel.DefaultArgs is a function in Talos 1.11+)
+	defaultArgs := kernel.DefaultArgs(nil)
+	args := append([]string(nil), defaultArgs...)
 	args = append(args,
 		"console=tty0",
 		"console=ttyS0",

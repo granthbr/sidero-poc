@@ -227,6 +227,17 @@ func (m *metadataConfigs) FetchConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Inject registry mirrors for air-gap deployments (Talos 1.9+)
+	decodedData, ewc = m.injectRegistryMirrors(ctx, decodedData, serverObj, serverClassObj, serverBinding)
+	if ewc.errorObj != nil {
+		throwError(
+			w,
+			ewc,
+		)
+
+		return
+	}
+
 	// Finally return config data
 	if _, err = w.Write(decodedData); err != nil {
 		log.Printf("failed to write data: %v", err)
@@ -403,6 +414,115 @@ func (m *metadataConfigs) findMetalMachineServerBinding(ctx context.Context, ser
 	}
 
 	return metalMachine, serverBinding, errorWithCode{}
+}
+
+// injectRegistryMirrors injects container registry mirror configuration for air-gap deployments.
+// This supports Talos 1.9+ air-gap features by reading the Environment's AirGap configuration
+// and injecting registry mirrors into the machine config.
+func (m *metadataConfigs) injectRegistryMirrors(ctx context.Context, decodedData []byte, serverObj *metalv1.Server, serverClassObj *metalv1.ServerClass, serverBinding *infrav1.ServerBinding) ([]byte, errorWithCode) {
+	// Determine which Environment to use (same precedence as iPXE server)
+	var env *metalv1.Environment
+
+	// Check Server.Spec.EnvironmentRef first
+	if serverObj.Spec.EnvironmentRef != nil {
+		env = &metalv1.Environment{}
+		err := m.client.Get(ctx, types.NamespacedName{
+			Namespace: "",
+			Name:      serverObj.Spec.EnvironmentRef.Name,
+		}, env)
+		if err != nil {
+			return nil, errorWithCode{
+				http.StatusInternalServerError,
+				fmt.Errorf("failure fetching environment %s: %s", serverObj.Spec.EnvironmentRef.Name, err),
+			}
+		}
+	} else if serverClassObj.Spec.EnvironmentRef != nil {
+		// Fall back to ServerClass.Spec.EnvironmentRef
+		env = &metalv1.Environment{}
+		err := m.client.Get(ctx, types.NamespacedName{
+			Namespace: "",
+			Name:      serverClassObj.Spec.EnvironmentRef.Name,
+		}, env)
+		if err != nil {
+			return nil, errorWithCode{
+				http.StatusInternalServerError,
+				fmt.Errorf("failure fetching environment %s: %s", serverClassObj.Spec.EnvironmentRef.Name, err),
+			}
+		}
+	} else {
+		// Fall back to default environment
+		env = &metalv1.Environment{}
+		err := m.client.Get(ctx, types.NamespacedName{
+			Namespace: "",
+			Name:      metalv1.EnvironmentDefault,
+		}, env)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				// No default environment, skip registry mirror injection
+				log.Printf("no default environment found, skipping registry mirror injection")
+				return decodedData, errorWithCode{}
+			}
+
+			return nil, errorWithCode{
+				http.StatusInternalServerError,
+				fmt.Errorf("failure fetching default environment: %s", err),
+			}
+		}
+	}
+
+	// Check if Environment has air-gap configuration with registry mirrors
+	if env.Spec.AirGap == nil || !env.Spec.AirGap.Enabled || len(env.Spec.AirGap.RegistryMirrors) == 0 {
+		// No air-gap configuration or no registry mirrors, skip injection
+		return decodedData, errorWithCode{}
+	}
+
+	log.Printf("injecting registry mirrors for air-gap deployment from environment %q", env.Name)
+
+	// Build the registry mirrors configuration in Talos format
+	// Structure:
+	// machine:
+	//   registries:
+	//     mirrors:
+	//       docker.io:
+	//         endpoints:
+	//           - https://registry.local:5000/docker.io
+	//         skipVerify: false
+	//         overridePath: false
+	mirrors := make(map[string]map[string]any)
+	for registry, config := range env.Spec.AirGap.RegistryMirrors {
+		mirrorConfig := map[string]any{
+			"endpoints": config.Endpoints,
+		}
+		if config.SkipVerify {
+			mirrorConfig["skipVerify"] = true
+		}
+		if config.OverridePath {
+			mirrorConfig["overridePath"] = true
+		}
+		mirrors[registry] = mirrorConfig
+	}
+
+	// Create strategic merge patch
+	patchData := map[string]any{
+		"machine": map[string]any{
+			"registries": map[string]any{
+				"mirrors": mirrors,
+			},
+		},
+	}
+
+	patchBytes, err := yaml.Marshal(patchData)
+	if err != nil {
+		return nil, errorWithCode{
+			http.StatusInternalServerError,
+			fmt.Errorf("failure marshaling registry mirror patch: %s", err),
+		}
+	}
+
+	log.Printf("applying registry mirror patch for %d registries", len(mirrors))
+
+	// Apply the patch using the same patchConfig function used for other patches
+	return patchConfig(decodedData, patchBytes)
 }
 
 // fetchBootstrapSecret is responsible for fetching a secret that contains the bootstrap data created by our bootstrap provider.

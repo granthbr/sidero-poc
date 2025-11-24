@@ -13,6 +13,7 @@ const (
 
 	KernelAsset = "vmlinuz"
 	InitrdAsset = "initramfs.xz"
+	BootAsset   = "boot.raw.xz"
 
 	DefaultRequeueAfter = time.Second * 20
 	PowerCheckPeriod    = 5 * time.Minute
