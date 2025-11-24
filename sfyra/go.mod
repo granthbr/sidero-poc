@@ -1,6 +1,6 @@
 module github.com/siderolabs/sidero/sfyra
 
-go 1.22.7
+go 1.23
 
 replace (
 	// local replace
@@ -20,19 +20,19 @@ require (
 	github.com/siderolabs/go-retry v0.3.3
 	github.com/siderolabs/net v0.4.0
 	github.com/siderolabs/sidero v0.0.0-00010101000000-000000000000
-	github.com/siderolabs/talos v1.8.0
-	github.com/siderolabs/talos/pkg/machinery v1.8.0
+	github.com/siderolabs/talos v1.11.5
+	github.com/siderolabs/talos/pkg/machinery v1.11.5
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.9.0
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.66.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.31.1
-	k8s.io/apiextensions-apiserver v0.31.1
-	k8s.io/apimachinery v0.31.1
-	k8s.io/client-go v0.31.1
-	sigs.k8s.io/cluster-api v1.8.3
-	sigs.k8s.io/controller-runtime v0.19.0
+	k8s.io/api v0.32.0
+	k8s.io/apiextensions-apiserver v0.32.0
+	k8s.io/apimachinery v0.32.0
+	k8s.io/client-go v0.32.0
+	sigs.k8s.io/cluster-api v1.10.0
+	sigs.k8s.io/controller-runtime v0.20.0
 )
 
 require (

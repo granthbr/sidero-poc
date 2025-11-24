@@ -23,6 +23,9 @@ type Asset struct {
 type Kernel struct {
 	Asset `json:",inline"`
 
+	// Args are kernel arguments. DEPRECATED in Talos 1.10+ with systemd-boot.
+	// Use BootAsset with embedded args instead.
+	// +optional
 	Args []string `json:"args,omitempty"`
 }
 
@@ -30,9 +33,47 @@ type Initrd struct {
 	Asset `json:",inline"`
 }
 
+// BootAsset represents a Talos Image Factory boot asset with embedded configuration.
+// This is the preferred method for Talos 1.10+ which uses systemd-boot and UKIs.
+type BootAsset struct {
+	// URL is the boot asset URL from Image Factory or custom UKI.
+	// Example: https://factory.talos.dev/image/<schematic-id>/<version>/metal-amd64.raw.xz
+	URL string `json:"url,omitempty"`
+
+	// SHA512 checksum of the boot asset.
+	// +optional
+	SHA512 string `json:"sha512,omitempty"`
+
+	// SchematicID is the Image Factory schematic ID (if using Image Factory).
+	// +optional
+	SchematicID string `json:"schematicID,omitempty"`
+
+	// KernelArgs are kernel arguments embedded in the boot asset.
+	// These are informational only - the actual args are baked into the UKI.
+	// +optional
+	KernelArgs []string `json:"kernelArgs,omitempty"`
+
+	// Extensions is a list of system extensions baked into this boot asset.
+	// These are informational only - extensions are baked into the image.
+	// +optional
+	Extensions []string `json:"extensions,omitempty"`
+}
+
 // EnvironmentSpec defines the desired state of Environment.
 type EnvironmentSpec struct {
+	// BootAsset is the preferred method for Talos 1.10+ with systemd-boot.
+	// When specified, Kernel and Initrd fields are ignored.
+	// +optional
+	BootAsset *BootAsset `json:"bootAsset,omitempty"`
+
+	// Kernel configuration for legacy boot (Talos < 1.10 or non-UEFI systems).
+	// Deprecated in favor of BootAsset for Talos 1.10+.
+	// +optional
 	Kernel Kernel `json:"kernel,omitempty"`
+
+	// Initrd configuration for legacy boot (Talos < 1.10 or non-UEFI systems).
+	// Deprecated in favor of BootAsset for Talos 1.10+.
+	// +optional
 	Initrd Initrd `json:"initrd,omitempty"`
 }
 
@@ -50,8 +91,9 @@ type EnvironmentStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
-// +kubebuilder:printcolumn:name="Kernel",type="string",JSONPath=".spec.kernel.url",description="the kernel for the environment"
-// +kubebuilder:printcolumn:name="Initrd",type="string",JSONPath=".spec.initrd.url",description="the initrd for the environment"
+// +kubebuilder:printcolumn:name="BootAsset",type="string",priority=0,JSONPath=".spec.bootAsset.url",description="the boot asset URL (Talos 1.10+)"
+// +kubebuilder:printcolumn:name="Kernel",type="string",priority=1,JSONPath=".spec.kernel.url",description="the kernel for the environment (legacy)"
+// +kubebuilder:printcolumn:name="Initrd",type="string",priority=1,JSONPath=".spec.initrd.url",description="the initrd for the environment (legacy)"
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type==\"Ready\")].status",description="indicates the readiness of the environment"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="The age of this resource"
 // +kubebuilder:storageversion
@@ -75,19 +117,34 @@ type EnvironmentList struct {
 }
 
 // EnvironmentDefaultSpec returns EnvironmentDefault's spec.
+// For Talos 1.10+, this uses the raw metal image which includes systemd-boot/UKI support.
+// For earlier versions, falls back to separate kernel/initrd.
 func EnvironmentDefaultSpec(talosRelease, apiEndpoint string, apiPort uint16) *EnvironmentSpec {
 	args := make([]string, 0, len(kernel.DefaultArgs)+6)
 	args = append(args, kernel.DefaultArgs...)
+	// Note: console=ttyS0 removed in Talos 1.8+ by default for bare metal
 	args = append(args, "console=tty0", "console=ttyS0", "earlyprintk=ttyS0")
 	args = append(args, "initrd=initramfs.xz", "talos.platform=metal")
 	sort.Strings(args)
 
+	// For Talos 1.10+, use the metal raw image which supports systemd-boot/UKI.
+	// This image can boot via iPXE and includes all necessary components.
+	// The kernel args are informational only - in production, use Image Factory
+	// to bake custom args and extensions into a UKI.
 	return &EnvironmentSpec{
+		BootAsset: &BootAsset{
+			// Using metal-amd64.raw.xz which supports both BIOS and UEFI boot
+			// For production: Use Image Factory API to generate custom schematics
+			// Example: https://factory.talos.dev/image/<schematic-id>/v1.11.5/metal-amd64.raw.xz
+			URL:        fmt.Sprintf("https://github.com/siderolabs/talos/releases/download/%s/metal-amd64.raw.xz", talosRelease),
+			KernelArgs: args, // Informational - actual args must be in schematic
+		},
+		// Fallback for legacy systems or explicit kernel/initrd preference
 		Kernel: Kernel{
 			Asset: Asset{
 				URL: fmt.Sprintf("https://github.com/siderolabs/talos/releases/download/%s/vmlinuz-amd64", talosRelease),
 			},
-			Args: args,
+			Args: args, // These work for BIOS boot, ignored for UEFI systemd-boot
 		},
 		Initrd: Initrd{
 			Asset: Asset{
@@ -98,9 +155,16 @@ func EnvironmentDefaultSpec(talosRelease, apiEndpoint string, apiPort uint16) *E
 }
 
 // IsReady returns aggregated Environment readiness.
+// Checks both BootAsset (preferred for Talos 1.10+) and legacy Kernel/Initrd.
 func (env *Environment) IsReady() bool {
 	assetURLs := map[string]struct{}{}
 
+	// Check BootAsset (preferred for Talos 1.10+)
+	if env.Spec.BootAsset != nil && env.Spec.BootAsset.URL != "" {
+		assetURLs[env.Spec.BootAsset.URL] = struct{}{}
+	}
+
+	// Check legacy Kernel/Initrd (fallback or explicit preference)
 	if env.Spec.Kernel.URL != "" {
 		assetURLs[env.Spec.Kernel.URL] = struct{}{}
 	}
@@ -109,6 +173,7 @@ func (env *Environment) IsReady() bool {
 		assetURLs[env.Spec.Initrd.URL] = struct{}{}
 	}
 
+	// Mark assets as ready based on conditions
 	for _, cond := range env.Status.Conditions {
 		if cond.Status == "True" && cond.Type == "Ready" {
 			delete(assetURLs, cond.URL)

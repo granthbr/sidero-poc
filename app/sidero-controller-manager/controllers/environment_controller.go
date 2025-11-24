@@ -78,19 +78,48 @@ func (r *EnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		result     *multierror.Error
 	)
 
-	for _, assetTask := range []struct {
+	// Build asset task list
+	assetTasks := []struct {
 		BaseName string
 		Asset    metalv1.Asset
-	}{
-		{
+	}{}
+
+	// Add BootAsset if specified (preferred for Talos 1.10+)
+	if env.Spec.BootAsset != nil && env.Spec.BootAsset.URL != "" {
+		assetTasks = append(assetTasks, struct {
+			BaseName string
+			Asset    metalv1.Asset
+		}{
+			BaseName: "boot.raw.xz", // Boot asset filename
+			Asset: metalv1.Asset{
+				URL:    env.Spec.BootAsset.URL,
+				SHA512: env.Spec.BootAsset.SHA512,
+			},
+		})
+	}
+
+	// Add legacy Kernel/Initrd assets (fallback or explicit preference)
+	if env.Spec.Kernel.URL != "" {
+		assetTasks = append(assetTasks, struct {
+			BaseName string
+			Asset    metalv1.Asset
+		}{
 			BaseName: constants.KernelAsset,
 			Asset:    env.Spec.Kernel.Asset,
-		},
-		{
+		})
+	}
+
+	if env.Spec.Initrd.URL != "" {
+		assetTasks = append(assetTasks, struct {
+			BaseName string
+			Asset    metalv1.Asset
+		}{
 			BaseName: constants.InitrdAsset,
 			Asset:    env.Spec.Initrd.Asset,
-		},
-	} {
+		})
+	}
+
+	for _, assetTask := range assetTasks {
 		file := filepath.Join(envs, assetTask.BaseName)
 
 		setReady := func(ready bool) {

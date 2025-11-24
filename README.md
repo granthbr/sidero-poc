@@ -33,10 +33,13 @@ This provider's versions are able to install and manage the following versions o
 
 This provider's versions are compatible with the following versions of Talos:
 
-|                        | v0.12  | v0.13 | v0.14 | v1.0  | v1.1  | v1.2  | v1.3  | v1.4  | v1.5  | v1.6  | v1.7  | v1.8  |
-| ---------------------- | ------ | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- |
-| Sidero Provider (v0.5) | ✓ (+)  | ✓ (+) | ✓     | ✓     | ✓     | ✓     | ✓     |       |       |       |       |       |
-| Sidero Provider (v0.6) |        |       |       | ✓     | ✓     | ✓     | ✓     | ✓     | ✓     | ✓     | ✓     | ✓     |
+|                        | v0.12  | v0.13 | v0.14 | v1.0  | v1.1  | v1.2  | v1.3  | v1.4  | v1.5  | v1.6  | v1.7  | v1.8  | v1.9  | v1.10 | v1.11 |
+| ---------------------- | ------ | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- |
+| Sidero Provider (v0.5) | ✓ (+)  | ✓ (+) | ✓     | ✓     | ✓     | ✓     | ✓     |       |       |       |       |       |       |       |       |
+| Sidero Provider (v0.6) |        |       |       | ✓     | ✓     | ✓     | ✓     | ✓     | ✓     | ✓     | ✓     | ✓     |       |       |       |
+| Sidero Provider (v0.7) |        |       |       | ✓     | ✓     | ✓     | ✓     | ✓     | ✓     | ✓     | ✓     | ✓     | ✓     | ✓     | ✓     |
+
+**Note**: v0.7 (development) includes modernization for Talos 1.10+ with Boot Asset support for systemd-boot/UKI.
 
 ## Support
 
